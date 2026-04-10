@@ -32,6 +32,11 @@ t_SEMICOLON = r';'
 t_EQUALS    = r'='
 t_GREATER   = r'>'
 t_LESS      = r'<'
+t_ignore = ' \t'
+
+def t_COMMENT(t):
+    r'//.*'
+    pass
 
 # Identificadores y palabras reservadas
 def t_ID(t):

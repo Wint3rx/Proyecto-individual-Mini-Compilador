@@ -103,26 +103,10 @@ class App(ctk.CTk):
         self.terminal.see("end")
 
     def action_record(self):
-        self.write_to_terminal("COMPILING SIGNAL...")
-        code = self.editor.get("1.0", "end-1c")
-        if not code.strip():
-            self.write_to_terminal("EMPTY TAPE DETECTED. CANNOT RECORD.", is_error=True)
-            return
-        self.write_to_terminal("SIGNAL RECORDED SUCCESSFULLY.")
-
-    def action_playback(self):
-        self.write_to_terminal("PLAYING BACK FREQUENCY...")
-        self.write_to_terminal("... DISTORTION AT 432Hz ...")
-
-    def action_intercept(self):
-        self.write_to_terminal("INTERCEPTING UNKNOWN SIGNAL...")
-        self.write_to_terminal("ANOMALY DETECTED IN SECTOR 4. SIGNAL LOST.", is_error=True)
-
-    def action_record(self):
         self.write_to_terminal("INITIATING SCAN...")
-        
+        from lexer import lexer, error_list
         error_list.clear()
-    
+        
         code = self.editor.get("1.0", "end-1c")
         
         if not code.strip():
@@ -131,18 +115,27 @@ class App(ctk.CTk):
 
         lexer.input(code)
         
-        self.symbol_table = []
-        
+        # Estructura para la Tabla de Símbolos
+        self.symbol_table = {} 
+        last_type_seen = None
+
         self.write_to_terminal("DECODING TOKENS...")
-        
+
         while True:
             tok = lexer.token()
-            if not tok:
-                break
+            if not tok: break
             
-            if tok.type == 'ID':
-                self.symbol_table.append(f"TOKEN: {tok.type} | VALUE: {tok.value}")
-                self.write_to_terminal(f"DETECTED: {tok.type}({tok.value})")
+            # Lógica simple para capturar símbolos y sus tipos
+            if tok.type in ['FREQ', 'DISTORT', 'VHS', 'PULSE']:
+                last_type_seen = tok.type
+            elif tok.type == 'ID':
+                if tok.value not in self.symbol_table:
+                    self.symbol_table[tok.value] = {
+                        "tipo": last_type_seen if last_type_seen else "UNKNOWN",
+                        "linea": tok.lineno
+                    }
+            elif tok.type == 'SEMICOLON':
+                last_type_seen = None # Resetear al final de la instrucción
 
         if error_list:
             self.write_to_terminal(f"{len(error_list)} ANOMALIES DETECTED IN SIGNAL.", is_error=True)
@@ -150,6 +143,23 @@ class App(ctk.CTk):
                 self.write_to_terminal(f"L:{err['linea']} C:{err['columna']} - {err['descripcion']}", is_error=True)
         else:
             self.write_to_terminal("SIGNAL STABLE. DECODING COMPLETE.")
+            self.display_data_tables()
+
+    def display_data_tables(self):
+        self.write_to_terminal("--- SYMBOL TABLE ---")
+        if not self.symbol_table:
+            self.write_to_terminal("NO SYMBOLS DETECTED.")
+        for key, data in self.symbol_table.items():
+            self.write_to_terminal(f"[{key}] TYPE: {data['tipo']} | LINE: {data['linea']}")
+        self.write_to_terminal("--------------------")
+
+    def action_playback(self):
+        self.write_to_terminal("PLAYING BACK FREQUENCY...")
+        self.write_to_terminal("... DISTORTION AT 432Hz ...")
+
+    def action_intercept(self):
+        self.write_to_terminal("INTERCEPTING UNKNOWN SIGNAL...")
+        self.write_to_terminal("ANOMALY DETECTED IN SECTOR 4. SIGNAL LOST.", is_error=True)
 
 if __name__ == "__main__":
     app = App()

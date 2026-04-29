@@ -1,3 +1,6 @@
+import code
+from urllib import parse
+
 from lexer import lexer, error_list, find_column
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -81,6 +84,7 @@ class App(ctk.CTk):
         btn(bar, "[ SAVE ]",      "#00BFFF",      "#005588", self.action_save     ).pack(side="left", padx=6, pady=10)
         btn(bar, "[ EXPORT ]",    "#FFAA00",      "#885500", self.action_export   ).pack(side="left", padx=6, pady=10)
         btn(bar, "[ INTERCEPT ]", self.ERR_COLOR, "#880000", self.action_intercept).pack(side="left", padx=6, pady=10)
+        btn(bar, "[ SYNTAX ]",    "#AAFFAA",      "#226622", self.action_syntax   ).pack(side="left", padx=6, pady=10)
 
     def _build_sidebar(self):
         sb = ctk.CTkFrame(self, width=190, corner_radius=0,
@@ -151,7 +155,7 @@ class App(ctk.CTk):
 
         self.tab_buttons = {}
         self.tab_panels  = {}
-        tab_names = ["TERMINAL", "TOKENS", "SYMBOLS", "ERRORS"]
+        tab_names = ["TERMINAL", "TOKENS", "SYMBOLS", "ERRORS", "ÁRBOL"]
 
         for name in tab_names:
             b = ctk.CTkButton(
@@ -197,11 +201,19 @@ class App(ctk.CTk):
             border_width=0, corner_radius=0, state="disabled"
         )
 
+        # Panel ÁRBOL
+        self.tree_box = ctk.CTkTextbox(
+            self.panel_container, font=self.font_tiny,
+            fg_color="#050505", text_color="#FFDD88",
+            border_width=0, corner_radius=0, state="disabled"
+        )
+
         self.tab_panels = {
             "TERMINAL": self.terminal,
             "TOKENS":   self.tokens_box,
             "SYMBOLS":  self.symbols_box,
             "ERRORS":   self.errors_box,
+            "ÁRBOL":    self.tree_box,
         }
 
         self._show_tab("TERMINAL")
@@ -351,6 +363,45 @@ class App(ctk.CTk):
             self.write_to_terminal(f"TABLES EXPORTED → {path.split('/')[-1]}")
         except Exception as e:
             self.write_to_terminal(f"EXPORT ERROR: {e}", is_error=True)
+    
+    def action_syntax(self):
+        """Corre solo el análisis sintáctico y muestra el árbol."""
+        from parser_sl import parse, arbol_completo_texto
+        code = self.editor.get("1.0", "end-1c")
+        if not code.strip():
+            self.write_to_terminal("EMPTY TAPE. NO SIGNAL.", is_error=True)
+            return
+        self.write_to_terminal("─" * 40)
+        self.write_to_terminal("RUNNING SYNTAX ANALYSIS...")
+        ast, serrors = parse(code)
+        self._poblar_arbol(ast)
+        self._poblar_errores_sint(serrors)
+        if serrors:
+            self.write_to_terminal(f"{len(serrors)} SYNTAX ERROR(S) FOUND.", is_error=True)
+            self._show_tab("ERRORS")
+        else:
+            self.write_to_terminal("SYNTAX OK. DERIVATION TREE GENERATED.")
+            self._show_tab("ÁRBOL")
+
+def _poblar_arbol(self, ast):
+    from parser_sl import arbol_completo_texto
+    self.tree_box.configure(state="normal")
+    self.tree_box.delete("0.0", "end")
+    self.tree_box.insert("end", "DERIVATION TREE — SIGNAL_LOSS\n")
+    self.tree_box.insert("end", "═" * 50 + "\n")
+    self.tree_box.insert("end", arbol_completo_texto(ast) + "\n")
+    self.tree_box.configure(state="disabled")
+
+def _poblar_errores_sint(self, serrors):
+    self.errors_box.configure(state="normal")
+    if serrors:
+        self.errors_box.insert("end", "\n── ERRORES SINTÁCTICOS ──\n")
+        for err in serrors:
+            self.errors_box.insert(
+                "end",
+                f"{err['tipo']:<12} L:{err['linea']}  C:{err['columna']}  {err['descripcion']}\n"
+            )
+    self.errors_box.configure(state="disabled")
 
     def action_intercept(self):
         """Muestra todos los tokens ilegales encontrados."""
@@ -486,9 +537,27 @@ class App(ctk.CTk):
                 f"{len(error_list)} ANOMAL{'Y' if len(error_list)==1 else 'IES'} IN SIGNAL.", is_error=True
             )
             self._show_tab("ERRORS")
+            return   # No tiene sentido parsear con errores léxicos
+
+        self.write_to_terminal(f"LEX OK — {len(self.token_list)} tokens · {len(self.symbol_table)} symbols.")
+
+        # ── Análisis sintáctico automático ────────
+        self.write_to_terminal("RUNNING SYNTAX ANALYSIS...")
+        from parser_sl import parse, arbol_completo_texto
+        ast, serrors = parse(code)
+
+        self._poblar_arbol(ast)
+        self._poblar_errores_sint(serrors)
+
+        nerr = len(serrors)
+        self.lbl_errors.configure(text=f"Errors:   {nerr}")
+
+        if serrors:
+            self.write_to_terminal(f"{nerr} SYNTAX ERROR(S) DETECTED.", is_error=True)
+            self._show_tab("ERRORS")
         else:
-            self.write_to_terminal(f"SCAN COMPLETE. {len(self.token_list)} tokens · {len(self.symbol_table)} symbols.")
-            self._show_tab("TOKENS")
+            self.write_to_terminal("SIGNAL DECODED. TREE GENERATED.")
+            self._show_tab("ÁRBOL")
 
     # ════════════════════════════════════════════
     #  BOOT

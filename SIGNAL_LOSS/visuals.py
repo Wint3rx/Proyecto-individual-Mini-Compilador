@@ -1,22 +1,10 @@
-import code
-from urllib import parse
-
 from lexer import lexer, error_list, find_column
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 import tkinter as tk
 
-#  SIGNAL_LOSS — GUI v2.0
-#  Cambios sobre v1:
-#    • action_record(): tabla de símbolos corregida (FREQ/VHS/PULSE como tipos)
-#    • Pestañas: Tokens · Símbolos · Errores
-#    • Botón EJECT (reset/limpiar)
-#    • Abrir / Guardar archivos .sl
-#    • Exportar tablas a .txt
-#    • PLAYBACK e INTERCEPT con funcionalidad real
-
-TYPE_KEYWORDS = {'FREQ', 'DISTORT', 'VHS', 'PULSE', 'ENCRYPT', 'STATIC'}  # declaran variables
-FUNC_KEYWORD  = 'ARCHIVE'                                                  # declara funciones
+TYPE_KEYWORDS = {'FREQ', 'DISTORT', 'VHS', 'PULSE', 'ENCRYPT', 'STATIC'} 
+FUNC_KEYWORD  = 'ARCHIVE'                                                  
 
 
 class App(ctk.CTk):
@@ -48,6 +36,7 @@ class App(ctk.CTk):
         self.current_file  = None
         self.symbol_table  = {}
         self.token_list    = []
+        self.tape_list     = []
 
         # ── Layout ───────────────────────────────
         self.grid_rowconfigure(1, weight=1)
@@ -88,27 +77,45 @@ class App(ctk.CTk):
 
     def _build_sidebar(self):
         sb = ctk.CTkFrame(self, width=190, corner_radius=0,
-                          fg_color=self.PANEL_BG, border_width=1, border_color=self.FG)
+                      fg_color=self.PANEL_BG, border_width=1, border_color=self.FG)
         sb.grid(row=1, column=0, sticky="nsew", padx=(10, 0), pady=10)
         sb.grid_propagate(False)
+        sb.grid_rowconfigure(3, weight=1)   # la lista de tapes se expande
+        sb.grid_columnconfigure(0, weight=1)
 
+        # ── Cabecera: solo título ────────────────────
         ctk.CTkLabel(sb, text="-- TAPES --",
-                     font=self.font_main, text_color=self.FG).pack(pady=(14, 4))
+             font=self.font_main, text_color=self.FG).grid(row=0, column=0, sticky="ew",
+                                                            padx=8, pady=(12, 8))
 
-        self.lbl_file = ctk.CTkLabel(sb, text="> NO TAPE LOADED",
-                                      font=self.font_small, text_color=self.DIM_FG,
-                                      wraplength=170, justify="left")
-        self.lbl_file.pack(fill="x", padx=10, pady=(0, 12))
+        # ── Stats ────────────────────────────────────
+        divider = ctk.CTkFrame(sb, height=1, fg_color=self.DIM_FG)
+        divider.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 6))
 
-        ctk.CTkLabel(sb, text="-- STATS --",
-                     font=self.font_main, text_color=self.FG).pack(pady=(4, 4))
+        stats = ctk.CTkFrame(sb, fg_color="transparent")
+        stats.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
 
-        self.lbl_tokens  = ctk.CTkLabel(sb, text="Tokens:   —", font=self.font_small, text_color=self.DIM_FG)
-        self.lbl_symbols = ctk.CTkLabel(sb, text="Symbols:  —", font=self.font_small, text_color=self.DIM_FG)
-        self.lbl_errors  = ctk.CTkLabel(sb, text="Errors:   —", font=self.font_small, text_color=self.DIM_FG)
-        self.lbl_tokens .pack(anchor="w", padx=12, pady=2)
-        self.lbl_symbols.pack(anchor="w", padx=12, pady=2)
-        self.lbl_errors .pack(anchor="w", padx=12, pady=2)
+        ctk.CTkLabel(stats, text="-- STATS --",
+                 font=self.font_main, text_color=self.FG).pack(anchor="w", pady=(0, 4))
+
+        self.lbl_tokens  = ctk.CTkLabel(stats, text="Tokens:   —", font=self.font_small, text_color=self.DIM_FG)
+        self.lbl_symbols = ctk.CTkLabel(stats, text="Symbols:  —", font=self.font_small, text_color=self.DIM_FG)
+        self.lbl_errors  = ctk.CTkLabel(stats, text="Errors:   —", font=self.font_small, text_color=self.DIM_FG)
+        self.lbl_tokens .pack(anchor="w")
+        self.lbl_symbols.pack(anchor="w")
+        self.lbl_errors .pack(anchor="w")
+
+        self.lbl_file = ctk.CTkLabel(stats, text="", font=self.font_tiny,
+                                  text_color=self.DIM_FG, wraplength=160, justify="left")
+        self.lbl_file.pack(anchor="w")
+
+        # ── Lista scrollable de archivos ─────────────
+        self.tape_listbox = ctk.CTkScrollableFrame(
+            sb, fg_color="transparent", scrollbar_button_color=self.DIM_FG,
+            scrollbar_button_hover_color=self.FG
+        )
+        self.tape_listbox.grid(row=3, column=0, sticky="nsew", padx=4, pady=(0, 8))
+        self.tape_listbox.grid_columnconfigure(0, weight=1)
 
     def _build_main_area(self):
         main = ctk.CTkFrame(self, fg_color="transparent")
@@ -247,6 +254,92 @@ class App(ctk.CTk):
         self._write(self.terminal, f"{prefix}{text}")
 
     # ════════════════════════════════════════════
+    #  SIDEBAR — gestión de tapes
+    # ════════════════════════════════════════════
+
+    def sidebar_add_tape(self):
+        """Abre el diálogo y añade el archivo a la lista del sidebar."""
+        path = filedialog.askopenfilename(
+            title="Add Tape to Sidebar",
+            filetypes=[("SIGNAL_LOSS files", "*.sl"), ("Text files", "*.txt"), ("All", "*.*")]
+        )
+        if path and path not in self.tape_list:
+            self.tape_list.append(path)
+            self._sidebar_render_tapes()
+
+    def _sidebar_render_tapes(self):
+            """Redibuja todos los botones de archivos en el sidebar."""
+            for widget in self.tape_listbox.winfo_children():
+                widget.destroy()
+
+            for path in self.tape_list:
+                name = path.split("/")[-1].split("\\")[-1]
+                is_active = (path == self.current_file)
+
+                row = ctk.CTkFrame(self.tape_listbox, fg_color="transparent")
+                row.pack(fill="x", pady=1)
+                row.grid_columnconfigure(0, weight=1)
+
+                btn = ctk.CTkButton(
+                    row, text=f"> {name}",
+                    font=self.font_small,
+                    fg_color="#1A1A1A" if is_active else "transparent",
+                    text_color=self.FG if is_active else self.DIM_FG,
+                    hover_color="#1A1A1A",
+                    anchor="w", corner_radius=0,
+                    command=lambda p=path: self.sidebar_open_tape(p)
+                )
+                btn.grid(row=0, column=0, sticky="ew")
+
+                # botón × para quitar de la lista
+                ctk.CTkButton(
+                    row, text="×", font=self.font_small,
+                    fg_color="transparent", text_color=self.DIM_FG,
+                    hover_color="#330000", corner_radius=0,
+                    width=22,
+                    command=lambda p=path: self.sidebar_remove_tape(p)
+                ).grid(row=0, column=1)
+
+    def sidebar_open_tape(self, path):
+        """Carga un archivo del sidebar en el editor (pregunta si hay cambios)."""
+        current_content = self.editor.get("1.0", "end-1c")
+        # Detectar cambios sin guardar comparando con el archivo actual
+        if self.current_file:
+            try:
+                with open(self.current_file, "r", encoding="utf-8") as f:
+                    saved = f.read()
+                if current_content.strip() != saved.strip():
+                    if not messagebox.askyesno(
+                        "Unsaved Changes",
+                        "Current tape has unsaved changes.\nSwitch anyway?"
+                    ):
+                        return
+            except Exception:
+                pass  # si no se puede leer el archivo actual, seguimos igual
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                code = f.read()
+            self.editor.delete("1.0", "end")
+            self.editor.insert("1.0", code)
+            self.current_file = path
+            name = path.split("/")[-1].split("\\")[-1]
+            self.lbl_file.configure(text=f"> {name}")
+            self.write_to_terminal(f"TAPE LOADED: {name}")
+            self._sidebar_render_tapes()   # refresca el resaltado activo
+        except Exception as e:
+            self.write_to_terminal(f"LOAD ERROR: {e}", is_error=True)
+
+    def sidebar_remove_tape(self, path):
+        """Quita un archivo de la lista del sidebar (no lo borra del disco)."""
+        if path in self.tape_list:
+            self.tape_list.remove(path)
+            if self.current_file == path:
+                self.current_file = None
+                self.lbl_file.configure(text="")
+            self._sidebar_render_tapes()
+
+    # ════════════════════════════════════════════
     #  ACCIONES DE BOTONES
     # ════════════════════════════════════════════
 
@@ -254,7 +347,7 @@ class App(ctk.CTk):
         """Limpia el editor, las tablas y el terminal."""
         self.editor.delete("0.0", "end")
         self.editor.insert("0.0", "# WRITE YOUR SIGNAL HERE...\n")
-        for box in [self.terminal, self.tokens_box, self.symbols_box, self.errors_box]:
+        for box in [self.terminal, self.tokens_box, self.symbols_box, self.errors_box, self.tree_box]:
             box.configure(state="normal")
             box.delete("0.0", "end")
             box.configure(state="disabled")
@@ -283,6 +376,9 @@ class App(ctk.CTk):
             self.current_file = path
             name = path.split("/")[-1].split("\\")[-1]
             self.lbl_file.configure(text=f"> {name}")
+            if path not in self.tape_list:
+                self.tape_list.append(path)
+            self._sidebar_render_tapes()
             self.write_to_terminal(f"TAPE LOADED: {name}")
         except Exception as e:
             self.write_to_terminal(f"LOAD ERROR: {e}", is_error=True)
@@ -366,7 +462,7 @@ class App(ctk.CTk):
     
     def action_syntax(self):
         """Corre solo el análisis sintáctico y muestra el árbol."""
-        from parser_sl import parse, arbol_completo_texto
+        from parser_sl import parse
         code = self.editor.get("1.0", "end-1c")
         if not code.strip():
             self.write_to_terminal("EMPTY TAPE. NO SIGNAL.", is_error=True)
@@ -383,29 +479,151 @@ class App(ctk.CTk):
             self.write_to_terminal("SYNTAX OK. DERIVATION TREE GENERATED.")
             self._show_tab("ÁRBOL")
 
-def _poblar_arbol(self, ast):
-    from parser_sl import arbol_completo_texto
-    self.tree_box.configure(state="normal")
-    self.tree_box.delete("0.0", "end")
-    self.tree_box.insert("end", "DERIVATION TREE — SIGNAL_LOSS\n")
-    self.tree_box.insert("end", "═" * 50 + "\n")
-    self.tree_box.insert("end", arbol_completo_texto(ast) + "\n")
-    self.tree_box.configure(state="disabled")
+    def _poblar_arbol(self, ast):
+        from parser_sl import arbol_completo_texto
+        self.tree_box.configure(state="normal")
+        self.tree_box.delete("0.0", "end")
+        self.tree_box.insert("end", "DERIVATION TREE — SIGNAL_LOSS\n")
+        self.tree_box.insert("end", "═" * 50 + "\n")
+        self.tree_box.insert("end", arbol_completo_texto(ast) + "\n")
+        self.tree_box.configure(state="disabled")
 
-def _poblar_errores_sint(self, serrors):
-    self.errors_box.configure(state="normal")
-    if serrors:
-        self.errors_box.insert("end", "\n── ERRORES SINTÁCTICOS ──\n")
-        for err in serrors:
-            self.errors_box.insert(
-                "end",
-                f"{err['tipo']:<12} L:{err['linea']}  C:{err['columna']}  {err['descripcion']}\n"
-            )
-    self.errors_box.configure(state="disabled")
+    def _poblar_errores_sint(self, serrors):
+        self.errors_box.configure(state="normal")
+        if serrors:
+            self.errors_box.insert("end", "\n── ERRORES SINTÁCTICOS ──\n")
+            for err in serrors:
+                self.errors_box.insert(
+                    "end",
+                    f"{err['tipo']:<12} L:{err['linea']}  C:{err['columna']}  {err['descripcion']}\n"
+                )
+        self.errors_box.configure(state="disabled")
+
+    def _eval_expr(self, node, env):
+        if node is None:
+            return None
+
+        node_type = node.get("tipo")
+
+        if node_type == "LITERAL":
+            return node.get("valor")
+
+        if node_type == "VARIABLE":
+            return env.get(node.get("nombre"), self.symbol_table.get(node.get("nombre"), {}).get("valor", 0))
+
+        if node_type == "NEGACION":
+            value = self._eval_expr(node.get("operando"), env)
+            try:
+                return -value
+            except Exception:
+                return 0
+
+        if node_type == "OPERACION":
+            left = self._eval_expr(node.get("izquierda"), env)
+            right = self._eval_expr(node.get("derecha"), env)
+            op = node.get("operador")
+
+            try:
+                if op == "+":
+                    return left + right
+                if op == "-":
+                    return left - right
+                if op == "*":
+                    return left * right
+                if op == "/":
+                    return left / right
+                if op == ">":
+                    return left > right
+                if op == "<":
+                    return left < right
+                if op == ">=":
+                    return left >= right
+                if op == "<=":
+                    return left <= right
+                if op == "==":
+                    return left == right
+                if op == "!=":
+                    return left != right
+            except Exception:
+                return 0
+
+        if node_type == "LLAMADA_FUNCION":
+            return [self._eval_expr(arg, env) for arg in node.get("argumentos", [])]
+
+        return None
+
+    def _execute_block(self, statements, env, depth=0, max_iterations=1000):
+        for statement in statements or []:
+            self._execute_node(statement, env, depth=depth, max_iterations=max_iterations)
+
+    def _execute_node(self, node, env, depth=0, max_iterations=1000):
+        if node is None:
+            return
+
+        node_type = node.get("tipo")
+
+        if node_type == "PROGRAMA":
+            self._execute_block(node.get("cuerpo", []), env, depth=depth, max_iterations=max_iterations)
+            return
+
+        if node_type == "DECLARACION":
+            value = self._eval_expr(node.get("valor"), env)
+            name = node.get("nombre")
+            env[name] = value
+            if name in self.symbol_table:
+                self.symbol_table[name]["valor"] = value
+            else:
+                self.symbol_table[name] = {
+                    "tipo": node.get("tipo_dato", "?"),
+                    "linea": node.get("linea", "?"),
+                    "valor": value,
+                }
+            return
+
+        if node_type == "ASIGNACION":
+            value = self._eval_expr(node.get("valor"), env)
+            name = node.get("nombre")
+            env[name] = value
+            if name in self.symbol_table:
+                self.symbol_table[name]["valor"] = value
+            return
+
+        if node_type == "PLAYBACK":
+            value = self._eval_expr(node.get("argumento"), env)
+            self.write_to_terminal(str(value))
+            return
+
+        if node_type == "CONDICIONAL":
+            if self._eval_expr(node.get("condicion"), env):
+                self._execute_block(node.get("cuerpo_then", []), env, depth=depth + 1, max_iterations=max_iterations)
+            else:
+                self._execute_block(node.get("cuerpo_else", []), env, depth=depth + 1, max_iterations=max_iterations)
+            return
+
+        if node_type == "BUCLE":
+            iterations = 0
+            while self._eval_expr(node.get("condicion"), env):
+                self._execute_block(node.get("cuerpo", []), env, depth=depth + 1, max_iterations=max_iterations)
+                iterations += 1
+                if iterations >= max_iterations:
+                    self.write_to_terminal("LOOP STOPPED: MAX ITERATIONS REACHED.", is_error=True)
+                    break
+            return
+
+        if node_type == "LLAMADA_FUNCION":
+            return
+
+        if node_type == "RETORNO":
+            return self._eval_expr(node.get("valor"), env)
+
+    def _run_program(self, ast):
+        env = {}
+        self.write_to_terminal("RUNNING SIGNAL...")
+        self._execute_node(ast, env)
+        return env
 
     def action_intercept(self):
         """Muestra todos los tokens ilegales encontrados."""
-        from lexer import error_list
         if not error_list:
             self.write_to_terminal("NO ANOMALIES INTERCEPTED.")
         else:
@@ -558,6 +776,7 @@ def _poblar_errores_sint(self, serrors):
         else:
             self.write_to_terminal("SIGNAL DECODED. TREE GENERATED.")
             self._show_tab("ÁRBOL")
+            self._run_program(ast)
 
     # ════════════════════════════════════════════
     #  BOOT

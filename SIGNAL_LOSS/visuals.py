@@ -488,15 +488,28 @@ class App(ctk.CTk):
         self.tree_box.insert("end", arbol_completo_texto(ast) + "\n")
         self.tree_box.configure(state="disabled")
 
-    def _poblar_errores_sint(self, serrors):
+    def _poblar_errores(self, lexical_errors, syntactic_errors):
         self.errors_box.configure(state="normal")
-        if serrors:
-            self.errors_box.insert("end", "\n── ERRORES SINTÁCTICOS ──\n")
-            for err in serrors:
+        if lexical_errors:
+            self.errors_box.insert("end", "\n── ERRORES LÉXICOS ──\n")
+            self.errors_box.insert("end", f"{'TIPO':<10} {'LÍN':<5} {'COL':<5} {'DESCRIPCIÓN'}\n")
+            self.errors_box.insert("end", "─" * 55 + "\n")
+            for err in lexical_errors:
                 self.errors_box.insert(
                     "end",
-                    f"{err['tipo']:<12} L:{err['linea']}  C:{err['columna']}  {err['descripcion']}\n"
+                    f"{err['tipo']:<10} {err['linea']:<5} {err['columna']:<5} {err['descripcion']}\n"
                 )
+        if syntactic_errors:
+            self.errors_box.insert("end", "\n── ERRORES SINTÁCTICOS ──\n")
+            self.errors_box.insert("end", f"{'TIPO':<10} {'LÍN':<5} {'COL':<5} {'DESCRIPCIÓN'}\n")
+            self.errors_box.insert("end", "─" * 55 + "\n")
+            for err in syntactic_errors:
+                self.errors_box.insert(
+                    "end",
+                    f"{err['tipo']:<10} {err['linea']:<5} {err['columna']:<5} {err['descripcion']}\n"
+                )
+        if not lexical_errors and not syntactic_errors:
+            self.errors_box.insert("end", "✓ Sin errores detectados.\n")
         self.errors_box.configure(state="disabled")
 
     def _eval_expr(self, node, env):
@@ -749,29 +762,27 @@ class App(ctk.CTk):
         self.lbl_symbols.configure(text=f"Symbols:  {len(self.symbol_table)}")
         self.lbl_errors .configure(text=f"Errors:   {len(error_list)}")
 
-        # ── Mensaje final en terminal ────────────
+        # ── Análisis sintáctico automático ────────
         if error_list:
             self.write_to_terminal(
                 f"{len(error_list)} ANOMAL{'Y' if len(error_list)==1 else 'IES'} IN SIGNAL.", is_error=True
             )
-            self._show_tab("ERRORS")
-            return   # No tiene sentido parsear con errores léxicos
+        else:
+            self.write_to_terminal(f"LEX OK — {len(self.token_list)} tokens · {len(self.symbol_table)} symbols.")
 
-        self.write_to_terminal(f"LEX OK — {len(self.token_list)} tokens · {len(self.symbol_table)} symbols.")
-
-        # ── Análisis sintáctico automático ────────
         self.write_to_terminal("RUNNING SYNTAX ANALYSIS...")
-        from parser_sl import parse, arbol_completo_texto
+        from parser_sl import parse
         ast, serrors = parse(code)
 
         self._poblar_arbol(ast)
-        self._poblar_errores_sint(serrors)
+        total_errors = len(error_list) + len(serrors)
+        self._poblar_errores(error_list, serrors)
 
-        nerr = len(serrors)
+        nerr = total_errors
         self.lbl_errors.configure(text=f"Errors:   {nerr}")
 
-        if serrors:
-            self.write_to_terminal(f"{nerr} SYNTAX ERROR(S) DETECTED.", is_error=True)
+        if total_errors:
+            self.write_to_terminal(f"{nerr} ERROR(S) DETECTED.", is_error=True)
             self._show_tab("ERRORS")
         else:
             self.write_to_terminal("SIGNAL DECODED. TREE GENERATED.")

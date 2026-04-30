@@ -88,6 +88,16 @@ def p_sentencia(p):
     p[0] = p[1]
 
 
+def p_sentencia_error(p):
+    '''sentencia : error SEMICOLON'''
+    p[0] = None
+
+
+def p_lista_sentencias_error(p):
+    '''lista_sentencias : lista_sentencias error SEMICOLON'''
+    p[0] = p[1]
+
+
 # ── Declaración de variable ──────────────────────────────────
 # TIPO ID = expresion ;
 def p_declaracion(p):

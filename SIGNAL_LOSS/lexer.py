@@ -1,13 +1,5 @@
 import ply.lex as lex
  
-#  SIGNAL_LOSS — Lexer v2.0
-#  Bugs corregidos:
-#    • FLOAT_VAL y STRING_VAL ahora están en tokens
-#    • FLOAT_VAL va ANTES que NUMBER (PLY usa orden de definición)
-#    • STRING_VAL renombrado a STRING para coincidir con la lista
-#    • t_COMMENT retorna None explícitamente (más limpio)
-#    • error_list se reinicia correctamente desde visuals.py
- 
 # Palabras reservadas
 reserved = {
     'RECORD':    'RECORD',      # Inicio del bloque principal
@@ -41,7 +33,7 @@ tokens = [
     'SEMICOLON', 'COMMA',
 ] + list(reserved.values())
  
-# Reglas simples (orden importa: más específicas primero) ─
+# Reglas simple ─
 t_DOUBLE_EQ  = r'=='
 t_NOT_EQ     = r'!='
 t_GREATER_EQ = r'>='
@@ -72,9 +64,6 @@ def t_ID(t):
     t.type = reserved.get(t.value, 'ID')
     return t
  
-# FLOAT_VAL debe ir ANTES que NUMBER
-#  PLY prioriza funciones por longitud de regex;
-#  definirlo primero garantiza que 3.14 no se lea como NUMBER "3" + PUNTO + NUMBER "14"
 def t_FLOAT_VAL(t):
     r'\d+\.\d+'
     t.value = float(t.value)

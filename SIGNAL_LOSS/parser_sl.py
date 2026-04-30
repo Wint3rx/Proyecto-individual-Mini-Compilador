@@ -40,10 +40,26 @@ precedence = (
 # ── programa ─────────────────────────────────────────────────
 # programa → RECORD { lista_sentencias } STOP
 def p_programa(p):
-    '''programa : RECORD LBRACE lista_sentencias RBRACE STOP
+    '''programa : lista_funciones_globales RECORD LBRACE lista_sentencias RBRACE STOP
+               | lista_funciones_globales RECORD LBRACE lista_sentencias RBRACE
+               | RECORD LBRACE lista_sentencias RBRACE STOP
                | RECORD LBRACE lista_sentencias RBRACE'''
-    p[0] = _nodo("PROGRAMA", p.lineno(1), cuerpo=p[3])
+    # Si hay funciones globales antes de RECORD, p[1] es la lista; sino p[1]=RECORD
+    if p[1] == 'RECORD':
+        funciones = []
+        cuerpo = p[3]
+    else:
+        funciones = p[1]
+        cuerpo = p[4]
+    p[0] = _nodo("PROGRAMA", p.lineno(1), funciones=funciones, cuerpo=cuerpo)
 
+def p_lista_funciones_globales_vacia(p):
+    '''lista_funciones_globales : '''
+    p[0] = []
+
+def p_lista_funciones_globales(p):
+    '''lista_funciones_globales : lista_funciones_globales def_funcion'''
+    p[0] = p[1] + [p[2]]
 
 # ── lista de sentencias ──────────────────────────────────────
 def p_lista_sentencias_vacia(p):

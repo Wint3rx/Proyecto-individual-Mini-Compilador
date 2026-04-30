@@ -24,7 +24,7 @@ reserved = {
     'STATIC':    'STATIC',      # constante
     'ENCRYPT':   'ENCRYPT',     # operación especial / cast
     'REWIND':    'REWIND',      # return
-    'ARCHIVE':   'ARCHIVE',     # import / include
+    'ARCHIVE':   'ARCHIVE',     # declaración de función
 }
  
 # Lista de tokens
